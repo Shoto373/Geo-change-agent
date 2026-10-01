@@ -1,0 +1,31 @@
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Go binaries and extracted compiler
+go/
+backend-go/server.exe
+*.exe
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Data and archives
+*.zip
+*.tar.gz
+*.tif
+*.tiff
+*.cog
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log

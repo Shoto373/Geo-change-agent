@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TerraChange: Поисковик изменений Земли (EUDR & Open-Vocabulary)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#eff6ff',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .comparison-container {
+      position: relative;
+      overflow: hidden;
+      user-select: none;
+    }
+    .comparison-slider {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: #38bdf8;
+      cursor: ew-resize;
+      z-index: 30;
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.8);
+    }
+    .comparison-slider::after {
+      content: '◀ ▶';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: #0f172a;
+      color: #38bdf8;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 700;
+      border: 1px solid #38bdf8;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 flex flex-col h-screen overflow-hidden antialiased">
+
+  <!-- Top Navigation Bar -->
+  <header class="bg-slate-900/90 backdrop-blur border-b border-slate-800 px-6 py-3 flex items-center justify-between z-40">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center font-black text-white shadow-lg shadow-blue-500/25 text-lg">
+        🌍
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="text-base font-bold tracking-tight text-white">TerraChange Core</h1>
+          <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">Go + PyTorch</span>
+        </div>
+        <p class="text-[11px] text-slate-400">Поисковик изменений Земли & Аудитор EUDR (Sentinel-2 L2A / 10m)</p>
+      </div>
+    </div>
+
+    <!-- System Status Badges -->
+    <div class="flex items-center gap-3">
+      <div class="hidden md:flex items-center gap-2 px-3 py-1 rounded-lg bg-slate-800/60 border border-slate-700/60 text-xs text-slate-300">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span>Gateway: <strong class="font-mono text-emerald-400">:8080 (Go)</strong></span>
+      </div>
+      <div class="hidden md:flex items-center gap-2 px-3 py-1 rounded-lg bg-slate-800/60 border border-slate-700/60 text-xs text-slate-300">
+        <span>ML Engine: <strong class="font-mono text-cyan-400">:8000 (PyTorch)</strong></span>
+      </div>
+      <div class="px-3 py-1 rounded-lg bg-indigo-950/60 border border-indigo-800/50 text-xs text-indigo-300 font-mono font-medium">
+        GPU: RTX 5060 8GB
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Work Area -->
+  <div class="flex-1 flex overflow-hidden">
+    
+    <!-- Sidebar Control Panel -->
+    <aside class="w-[420px] bg-slate-900/70 backdrop-blur-md border-r border-slate-800 p-5 flex flex-col gap-5 overflow-y-auto z-30">
+      
+      <!-- Quick Region Presets -->
+      <div>
+        <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Готовые тестовые полигоны</label>
+        <div class="grid grid-cols-2 gap-2 text-xs">
+          <button onclick="setPreset('xingu')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-left transition flex flex-col gap-0.5">
+            <span class="font-semibold text-slate-200">🇧🇷 Пара, Бразилия</span>
+            <span class="text-[10px] text-slate-400">Сан-Феликс (Вырубка)</span>
+          </button>
+          <button onclick="setPreset('matogrosso')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-left transition flex flex-col gap-0.5">
+            <span class="font-semibold text-slate-200">🇧🇷 Мату-Гросу</span>
+            <span class="text-[10px] text-slate-400">Сельхоз экспансия</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Bounding Box Form -->
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <label class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Координаты BBox (WGS84)</label>
+          <button onclick="syncBboxFromMap()" class="text-[10px] text-cyan-400 hover:text-cyan-300">Взять из карты</button>
+        </div>
+        <div class="grid grid-cols-2 gap-2 font-mono text-xs">
+          <div>
+            <span class="text-[10px] text-slate-500">Min Lon (Запад):</span>
+            <input id="minLon" type="number" step="0.01" value="-52.45" class="w-full bg-slate-950/80 border border-slate-700/80 rounded-lg px-2.5 py-1.5 mt-1 text-slate-200 focus:outline-none focus:border-blue-500">
+          </div>
+          <div>
+            <span class="text-[10px] text-slate-500">Min Lat (Юг):</span>
+            <input id="minLat" type="number" step="0.01" value="-6.22" class="w-full bg-slate-950/80 border border-slate-700/80 rounded-lg px-2.5 py-1.5 mt-1 text-slate-200 focus:outline-none focus:border-blue-500">
+          </div>
+          <div>
+            <span class="text-[10px] text-slate-500">Max Lon (Восток):</span>
+            <input id="maxLon" type="number" step="0.01" value="-52.35" class="w-full bg-slate-950/80 border border-slate-700/80 rounded-lg px-2.5 py-1.5 mt-1 text-slate-200 focus:outline-none focus:border-blue-500">
+          </div>
+          <div>
+            <span class="text-[10px] text-slate-500">Max Lat (Север):</span>
+            <input id="maxLat" type="number" step="0.01" value="-6.12" class="w-full bg-slate-950/80 border border-slate-700/80 rounded-lg px-2.5 py-1.5 mt-1 text-slate-200 focus:outline-none focus:border-blue-500">
+          </div>
+        </div>
+      </div>
+
+      <!-- Date Ranges -->
+      <div>
+        <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Временные интервалы (STAC)</label>
+        <div class="space-y-2">
+          <div>
+            <span class="text-[11px] text-slate-400">T1: Базовое состояние (EUDR Cutoff $\approx$ 2021)</span>
+            <input id="t1Range" type="text" value="2021-07-01/2021-08-30" class="w-full font-mono bg-slate-950/80 border border-slate-700/80 rounded-lg px-2.5 py-1.5 mt-1 text-xs text-slate-200 focus:outline-none focus:border-blue-500">
+          </div>
+          <div>
+            <span class="text-[11px] text-slate-400">T2: Контрольная дата аудита (2024)</span>
+            <input id="t2Range" type="text" value="2024-07-01/2024-08-30" class="w-full font-mono bg-slate-950/80 border border-slate-700/80 rounded-lg px-2.5 py-1.5 mt-1 text-xs text-slate-200 focus:outline-none focus:border-blue-500">
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Button -->
+      <button id="btnRun" onclick="runAnalysis()" class="w-full py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 active:from-blue-700 active:to-cyan-700 font-semibold text-xs tracking-wider uppercase rounded-xl shadow-lg shadow-blue-500/25 transition flex items-center justify-center gap-2">
+        <span id="btnSpinner" class="hidden animate-spin">⏳</span>
+        <span id="btnText">Запустить аудит изменений</span>
+      </button>
+
+      <!-- Audit Results Dossier -->
+      <div id="resultsCard" class="hidden border border-slate-800 rounded-xl p-4 bg-slate-950/90 flex flex-col gap-3.5 shadow-2xl">
+        <div class="flex items-center justify-between">
+          <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">EUDR Комплаенс-вердикт</span>
+          <span id="badgeVerdict" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold"></span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 text-center">
+          <div class="bg-slate-900 border border-slate-800 p-2.5 rounded-lg">
+            <div id="statArea" class="text-xl font-black text-rose-400">--</div>
+            <div class="text-[10px] text-slate-400 uppercase font-medium">Площадь вырубки</div>
+          </div>
+          <div class="bg-slate-900 border border-slate-800 p-2.5 rounded-lg">
+            <div id="statConfidence" class="text-xl font-black text-cyan-400">--</div>
+            <div class="text-[10px] text-slate-400 uppercase font-medium">Уверенность (Conf)</div>
+          </div>
+        </div>
+
+        <div class="text-xs text-slate-300 leading-relaxed bg-slate-900/70 p-3 rounded-lg border border-slate-800 font-sans" id="auditSummary">
+          --
+        </div>
+
+        <div class="text-[11px] text-slate-500 flex justify-between items-center border-t border-slate-800/80 pt-2 font-mono">
+          <span>Скор: <b id="statNDVI" class="text-amber-400">--</b></span>
+          <span>Время: <b id="statTime" class="text-slate-300">--</b> ms</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Viewport: Map & Inspection Deck -->
+    <main class="flex-1 flex flex-col overflow-hidden">
+      
+      <!-- Top Half: Leaflet Map -->
+      <div class="h-[45%] border-b border-slate-800 relative" id="mapContainer">
+        <div id="map" class="w-full h-full"></div>
+        <div class="absolute top-3 right-3 bg-slate-900/90 backdrop-blur border border-slate-700/80 px-3 py-1.5 rounded-lg text-xs z-[1000] text-slate-300 shadow-xl flex items-center gap-2">
+          <span>🖱️</span> Перемещайте карту или кликните для выбора точки
+        </div>
+      </div>
+
+      <!-- Bottom Half: Image Comparison & Mask Inspector -->
+      <div class="h-[55%] bg-slate-950 p-4 flex flex-col overflow-hidden">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-3">
+            <span class="text-xs font-bold text-slate-300">Инспектор спутниковых растров Sentinel-2</span>
+            <div class="flex rounded-lg bg-slate-900 p-0.5 border border-slate-800 text-[11px]">
+              <button id="modeSwipe" onclick="setMode('swipe')" class="px-3 py-1 rounded bg-blue-600 text-white font-medium">Шторка (До / После)</button>
+              <button id="modeOverlay" onclick="setMode('overlay')" class="px-3 py-1 rounded text-slate-400 hover:text-white font-medium">Маска изменений</button>
+            </div>
+          </div>
+          <div class="text-[11px] text-slate-500 font-mono" id="sourceInfo">
+            Ожидание запроса...
+          </div>
+        </div>
+
+        <!-- Slider Comparison Canvas -->
+        <div class="flex-1 rounded-xl border border-slate-800 comparison-container bg-slate-900/50 flex items-center justify-center relative overflow-hidden shadow-inner" id="sliderWrapper">
+          <div id="placeholderText" class="text-center p-6">
+            <div class="text-4xl mb-2">🛰️</div>
+            <p class="text-xs text-slate-400">Нажмите <strong>«Запустить аудит изменений»</strong>, чтобы загрузить данные через STAC API</p>
+          </div>
+
+          <!-- T1 Image -->
+          <img id="imgBefore" class="absolute inset-0 w-full h-full object-contain hidden" />
+          
+          <!-- T2 Image (Clipped for Swipe) -->
+          <div id="afterClip" class="absolute inset-0 w-full h-full overflow-hidden hidden" style="clip-path: polygon(50% 0, 100% 0, 100% 100%, 50% 100%);">
+            <img id="imgAfter" class="w-full h-full object-contain" />
+          </div>
+
+          <!-- T2 + Mask Overlay -->
+          <img id="imgOverlay" class="absolute inset-0 w-full h-full object-contain hidden" />
+
+          <!-- Slider Handle -->
+          <div id="sliderHandle" class="comparison-slider hidden" style="left: 50%;"></div>
+        </div>
+      </div>
+    </main>
+
+  </div>
+
+  <script>
+    // Инициализация карты Leaflet
+    const map = L.map('map').setView([-6.17, -52.40], 11);
+    
+    // Спутниковая подложка ESRI World Imagery
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 18,
+      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+    }).addTo(map);
+
+    let currentBboxRect = null;
+    function updateBboxOnMap(minLon, minLat, maxLon, maxLat) {
+      if (currentBboxRect) map.removeLayer(currentBboxRect);
+      currentBboxRect = L.rectangle([[minLat, minLon], [maxLat, maxLon]], {
+        color: "#38bdf8",
+        weight: 2,
+        fillColor: "#38bdf8",
+        fillOpacity: 0.18
+      }).addTo(map);
+      map.fitBounds(currentBboxRect.getBounds());
+    }
+
+    function syncBboxFromMap() {
+      const bounds = map.getBounds();
+      document.getElementById('minLon').value = bounds.getWest().toFixed(3);
+      document.getElementById('minLat').value = bounds.getSouth().toFixed(3);
+      document.getElementById('maxLon').value = bounds.getEast().toFixed(3);
+      document.getElementById('maxLat').value = bounds.getNorth().toFixed(3);
+      updateBboxOnMap(bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth());
+    }
+
+    function setPreset(preset) {
+      if (preset === 'xingu') {
+        document.getElementById('minLon').value = -52.45;
+        document.getElementById('minLat').value = -6.22;
+        document.getElementById('maxLon').value = -52.35;
+        document.getElementById('maxLat').value = -6.12;
+        updateBboxOnMap(-52.45, -6.22, -52.35, -6.12);
+      } else if (preset === 'matogrosso') {
+        document.getElementById('minLon').value = -55.85;
+        document.getElementById('minLat').value = -11.95;
+        document.getElementById('maxLon').value = -55.75;
+        document.getElementById('maxLat').value = -11.85;
+        updateBboxOnMap(-55.85, -11.95, -55.75, -11.85);
+      }
+    }
+    setPreset('xingu');
+
+    // Интерактивная шторка сравнения (Swipe)
+    const sliderWrapper = document.getElementById('sliderWrapper');
+    const sliderHandle = document.getElementById('sliderHandle');
+    const afterClip = document.getElementById('afterClip');
+    let isSliding = false;
+
+    sliderHandle.addEventListener('mousedown', () => isSliding = true);
+    window.addEventListener('mouseup', () => isSliding = false);
+    window.addEventListener('mousemove', (e) => {
+      if (!isSliding) return;
+      const rect = sliderWrapper.getBoundingClientRect();
+      let x = e.clientX - rect.left;
+      x = Math.max(0, Math.min(x, rect.width));
+      const percent = (x / rect.width) * 100;
+      sliderHandle.style.left = `${percent}%`;
+      afterClip.style.clipPath = `polygon(${percent}% 0, 100% 0, 100% 100%, ${percent}% 100%)`;
+    });
+
+    let currentMode = 'swipe';
+    function setMode(mode) {
+      currentMode = mode;
+      const btnSwipe = document.getElementById('modeSwipe');
+      const btnOverlay = document.getElementById('modeOverlay');
+      const imgB = document.getElementById('imgBefore');
+      const afterC = document.getElementById('afterClip');
+      const handle = document.getElementById('sliderHandle');
+      const imgO = document.getElementById('imgOverlay');
+
+      if (mode === 'swipe') {
+        btnSwipe.className = "px-3 py-1 rounded bg-blue-600 text-white font-medium";
+        btnOverlay.className = "px-3 py-1 rounded text-slate-400 hover:text-white font-medium";
+        imgO.classList.add('hidden');
+        if (imgB.src) {
+          imgB.classList.remove('hidden');
+          afterC.classList.remove('hidden');
+          handle.classList.remove('hidden');
+        }
+      } else {
+        btnOverlay.className = "px-3 py-1 rounded bg-blue-600 text-white font-medium";
+        btnSwipe.className = "px-3 py-1 rounded text-slate-400 hover:text-white font-medium";
+        imgB.classList.add('hidden');
+        afterC.classList.add('hidden');
+        handle.classList.add('hidden');
+        if (imgO.src) {
+          imgO.classList.remove('hidden');
+        }
+      }
+    }
+
+    async function runAnalysis() {
+      const minLon = parseFloat(document.getElementById('minLon').value);
+      const minLat = parseFloat(document.getElementById('minLat').value);
+      const maxLon = parseFloat(document.getElementById('maxLon').value);
+      const maxLat = parseFloat(document.getElementById('maxLat').value);
+      const t1 = document.getElementById('t1Range').value;
+      const t2 = document.getElementById('t2Range').value;
+
+      updateBboxOnMap(minLon, minLat, maxLon, maxLat);
+
+      const btn = document.getElementById('btnRun');
+      const spinner = document.getElementById('btnSpinner');
+      const btnText = document.getElementById('btnText');
+      btn.disabled = true;
+      spinner.classList.remove('hidden');
+      btnText.innerText = "Анализ растров...";
+
+      // Определяем URL бэкенда (Go на :8080 или прямой fallback на :8000)
+      const targetUrl = window.location.port === "8080" 
+        ? "/api/v1/analyze" 
+        : "http://localhost:8080/api/v1/analyze";
+
+      try {
+        const response = await fetch(targetUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            bbox: [minLon, minLat, maxLon, maxLat],
+            t1_range: t1,
+            t2_range: t2
+          })
+        });
+
+        if (!response.ok) {
+          const err = await response.text();
+          throw new Error(err);
+        }
+
+        const data = await response.json();
+
+        // Отображение изображений
+        document.getElementById('placeholderText').classList.add('hidden');
+        const imgB = document.getElementById('imgBefore');
+        const imgA = document.getElementById('imgAfter');
+        const imgO = document.getElementById('imgOverlay');
+        
+        imgB.src = data.images.t1_rgb;
+        imgA.src = data.images.t2_rgb;
+        imgO.src = data.images.mask_overlay;
+
+        setMode(currentMode);
+
+        // Обновление карточки
+        document.getElementById('resultsCard').classList.remove('hidden');
+        document.getElementById('statArea').innerText = `${data.stats.changed_area_hectares} га`;
+        document.getElementById('statConfidence').innerText = `${(data.stats.mean_confidence * 100).toFixed(0)}%`;
+        document.getElementById('statNDVI').innerText = `ΔNDVI: ${data.stats.mean_delta_ndvi.toFixed(3)}`;
+        document.getElementById('statTime').innerText = data.execution_time_ms;
+
+        const badge = document.getElementById('badgeVerdict');
+        if (data.stats.is_deforestation_detected) {
+          badge.innerText = 'НЕСООТВЕТСТВИЕ (EUDR Alert)';
+          badge.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-950 text-rose-400 border border-rose-800';
+        } else {
+          badge.innerText = 'СООТВЕТСТВУЕТ (No Deforestation)';
+          badge.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800';
+        }
+
+        document.getElementById('auditSummary').innerText = data.audit_verdict;
+        document.getElementById('sourceInfo').innerText = `T1: ${data.data_source?.t1 || 'S2'} | T2: ${data.data_source?.t2 || 'S2'}`;
+
+      } catch (err) {
+        alert("Ошибка анализа: " + err.message);
+      } finally {
+        btn.disabled = false;
+        spinner.classList.add('hidden');
+        btnText.innerText = "Запустить аудит изменений";
+      }
+    }
+  </script>
+</body>
+</html>
