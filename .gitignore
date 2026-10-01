@@ -16,12 +16,17 @@ __pycache__/
 *.so
 .pytest_cache/
 
-# Data and archives
+# Data, weights and archives
 *.zip
 *.tar.gz
 *.tif
 *.tiff
 *.cog
+*.pth
+*.pt
+*.bin
+checkpoints/
+data/
 
 # OS & Editor
 .DS_Store
