@@ -146,7 +146,11 @@ class BITJointFusion(nn.Module):
         # 6. Итоговая разностная карта изменений (абсолютная разность в пиксельном пространстве)
         spatial_diff = torch.abs(refined_f2 - refined_f1)
 
+        # 7. Явный вектор семантических изменений для Caption Decoder:
+        diff_tokens = ctx_t2 - ctx_t1
+        caption_context = torch.cat([diff_tokens, ctx_t1, ctx_t2], dim=1)
+
         # Возвращаем:
         # - spatial_diff: для масочного декодера (Segmentation)
-        # - joint_context: для текстового трансформера (Captioning)
-        return spatial_diff, joint_context
+        # - caption_context: обогащенные токены изменений (Captioning)
+        return spatial_diff, caption_context

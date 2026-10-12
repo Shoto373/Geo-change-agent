@@ -34,3 +34,18 @@ Thumbs.db
 .vscode/
 .idea/
 *.log
+
+# Documents and articles
+*.doc
+*.docx
+*.pdf
+article/
+
+# Agent configurations and rules
+.agents/
+.agent/
+AGENTS.md
+GEMINI.md
+
+# Generated test images and reports
+ml-service/*.png
